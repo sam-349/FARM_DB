@@ -4,6 +4,7 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const multer = require("multer");
 const path = require("path");
+const jwt = require("jsonwebtoken");
 
 // Import models
 const { User, Blog, Product, Shop, MarketPrice, Training } = require("./models/models");
@@ -11,6 +12,7 @@ const { User, Blog, Product, Shop, MarketPrice, Training } = require("./models/m
 const app = express();
 const port = 3000;
 const dbUrl = "mongodb+srv://admin:admin123@cluster0.xnhgc.mongodb.net/farm_db?retryWrites=true&w=majority&appName=Cluster0";
+const secretKey = "your_jwt_secret";
 
 mongoose
   .connect(dbUrl, { useNewUrlParser: true, useUnifiedTopology: true })
@@ -22,6 +24,19 @@ app.use(express.json());
 
 // Set up multer for file uploads
 const upload = multer({ storage: multer.memoryStorage() });
+
+
+// Middleware for JWT authentication
+const authenticateToken = (req, res, next) => {
+  const token = req.header("Authorization");
+  if (!token) return res.status(401).json({ error: "Access denied. No token provided." });
+  
+  jwt.verify(token.split(" ")[1], secretKey, (err, user) => {
+      if (err) return res.status(403).json({ error: "Invalid token." });
+      req.user = user;
+      next();
+  });
+};
 
 
 // Signup endpoint: Creates a new user
@@ -58,7 +73,9 @@ app.post("/login", async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ error: "Invalid credentials" });
 
-    res.json({ message: "Login successful", user });
+    const token = jwt.sign({ userId: user._id, email: user.email }, secretKey, { expiresIn: "1h" });
+    res.json({ token });
+    //res.json({ message: "Login successful", user });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
