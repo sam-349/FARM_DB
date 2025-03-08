@@ -57,6 +57,12 @@ const trainingSchema = new mongoose.Schema({
   link: { type: String, required: true },
 });
 
+const cartSchema = new mongoose.Schema({
+  productid: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true },
+  user_id: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  qty: { type: Number, required: true, min: 1 }
+});
+
 // Create Models
 const User = mongoose.model("User", userSchema);
 const Blog = mongoose.model("Blog", blogSchema);
@@ -64,7 +70,10 @@ const Product = mongoose.model("Product", productSchema);
 const Shop = mongoose.model("Shop", shopSchema);
 const MarketPrice = mongoose.model("MarketPrice", marketPriceSchema);
 const Training = mongoose.model("Training", trainingSchema);
+const Cart = mongoose.model("Cart", cartSchema)
+
+
 
 // Export Models
-module.exports = { User, Blog, Product, Shop, MarketPrice, Training };
+module.exports = { User, Blog, Product, Shop, MarketPrice, Training, Cart };
 
