@@ -7,7 +7,7 @@ const path = require("path");
 const jwt = require("jsonwebtoken");
 
 // Import models
-const { User, Blog, Product, Shop, MarketPrice, Training } = require("./models/models");
+const { User, Blog, Product, Shop, MarketPrice, Training, Cart } = require("./models/models");
 
 const app = express();
 const port = 3000;
@@ -19,28 +19,29 @@ mongoose
   .then(() => console.log("MongoDB connected"))
   .catch((err) => console.error("MongoDB connection error:", err));
 
-  // Middleware to parse JSON bodies
+// Middleware to parse JSON bodies
 app.use(express.json());
 
 // Set up multer for file uploads
 const upload = multer({ storage: multer.memoryStorage() });
 
-
 // Middleware for JWT authentication
 const authenticateToken = (req, res, next) => {
   const token = req.header("Authorization");
   if (!token) return res.status(401).json({ error: "Access denied. No token provided." });
-  
+
   jwt.verify(token.split(" ")[1], secretKey, (err, user) => {
-      if (err) return res.status(403).json({ error: "Invalid token." });
-      req.user = user;
-      next();
+    if (err) return res.status(403).json({ error: "Invalid token." });
+    req.user = user;
+    next();
   });
 };
 
 
+
 // Signup endpoint: Creates a new user
 app.post("/signup", upload.single("pic"), async (req, res) => {
+  console.log("signup called wit body " + req.body.type);
   try {
     const { username, mail, password, phonenumber, location, type } = req.body;
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -66,6 +67,7 @@ app.post("/signup", upload.single("pic"), async (req, res) => {
 // Login endpoint: Authenticates a user
 app.post("/login", async (req, res) => {
   try {
+    console.log("login called with body: " + req.body.mail + " " + req.body.password);
     const { mail, password } = req.body;
     const user = await User.findOne({ mail });
     if (!user) return res.status(400).json({ error: "User not found" });
@@ -75,13 +77,20 @@ app.post("/login", async (req, res) => {
 
     const token = jwt.sign({ userId: user._id, email: user.email }, secretKey, { expiresIn: "1h" });
     res.json({ token });
-    //res.json({ message: "Login successful", user });
+    // res.json({ message: "Login successful", user });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-
+app.get("/farmers", async (req, res) => {
+  try {
+    const farmers = await User.find({ type: "farmer" });
+    res.status(200).json(farmers);
+  } catch (error) {
+    res.status(500).json({ message: "Error retrieving farmers", error });
+  }
+});
 
 // Create a blog with images
 app.post("/blogs", upload.array("images", 5), async (req, res) => {
@@ -100,12 +109,42 @@ app.post("/blogs", upload.array("images", 5), async (req, res) => {
     await newBlog.save();
     res.status(201).json(newBlog);
   } catch (err) {
+    console.log("error while posting blog: " + err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// get all blogs
+// GET blogs by category
 app.get("/blogs", async (req, res) => {
+  try {
+    const { category } = req.query;
+
+    // Define excluded categories
+    const excludedCategories = ["wheat", "paddy", "fruits", "vegetables"];
+
+    let blogs;
+
+    if (!category) {
+      return res.status(400).json({ message: "Category is required" });
+    }
+
+    if (category === "other") {
+      // Fetch blogs that do NOT belong to excluded categories
+      blogs = await Blog.find({ category: { $nin: excludedCategories } }).populate("userId", "username");
+    } else {
+      // Fetch blogs for the given category
+      blogs = await Blog.find({ category }).populate("userId", "username");
+    }
+
+    res.status(200).json(blogs);
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error });
+  }
+});
+
+
+// get all blogs
+app.get("/blogs/all", async (req, res) => {
   try {
     const blogs = await Blog.find().populate("userId", "username");
     res.json(blogs);
@@ -118,7 +157,7 @@ app.get("/blogs", async (req, res) => {
 // **Fetch blogs by Title**
 app.get("/blogs/:title", async (req, res) => {
   try {
-    const blogs = await Blog.find({ title: { $regex: req.params.title, $options: "i" } });
+    const blogs = await Blog.find({ title: { $regex: req.params.title, $options: "i" } }).populate("userId", "username");
     res.json(blogs);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -172,7 +211,6 @@ app.delete("/blogs/:id", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 
 // Create a product
@@ -529,13 +567,165 @@ app.delete("/trainings/:id", async (req, res) => {
   }
 });
 
+//get cart items
+app.get('/cart/:userId', async (req, res) => {
+  try {
+    const userId = req.params.userId;
+
+    // Validate if userId is a valid ObjectId (optional, but good practice)
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: 'Invalid userId' });
+    }
+
+    // Find cart items for the given user and populate product details
+    const cartItems = await Cart.find({ user_id: userId })
+      .populate({
+        path: 'productid', // Populate the 'productid' field with Product documents
+        populate: { // Nested population within 'productid'
+          path: 'userId',  // Populate 'userId' field within the Product document
+          select: '-password' // Optionally exclude password from populated User
+        }
+      })
+      .exec();
+
+    if (!cartItems || cartItems.length === 0) {
+      return res.status(200).json({ message: 'Cart is empty for this user', cartItems: [] }); // Or you can send 404 if you consider empty cart as not found
+    }
+
+    res.status(200).json({ cartItems });
+
+  } catch (error) {
+    console.error('Error retrieving cart items:', error);
+    res.status(500).json({ message: 'Failed to retrieve cart items', error: error.message });
+  }
+});
 
 
+// POST endpoint to add items to user cart
+app.post('/cart', async (req, res) => {
+  try {
+    const { productId, user_id, qty } = req.body; // Use productId from request body
+    console.log(productId + " " + user_id + " " + qty);
+
+    // Validate required fields
+    if (!productId || !user_id || !qty) { // Use productId for validation
+      return res.status(400).json({ message: 'Missing required fields: productId, user_id, qty' }); // Use productId in message
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(user_id)) { // Only user_id needs to be ObjectId in CartSchema
+      return res.status(400).json({ message: 'Invalid user_id' }); // Validation for user_id ObjectId
+    }
+
+    if (qty <= 0) {
+      return res.status(400).json({ message: 'Quantity must be greater than 0' });
+    }
+
+    // Check if product and user exist (optional, but recommended for data integrity)
+    // Use Product.findOne with productId (String field in ProductSchema)
+    const productExists = await Product.findById(productId);
+    const userExists = await User.findById(user_id);
+
+    if (!productExists) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+    if (!userExists) {
+      return res.status(404).json({ message: 'User not found' });
+    }
 
 
+    // Check if item already exists in the cart for this user and product
+    // Use productExists._id (ObjectId of Product document) for productid in Cart query
+    let cartItem = await Cart.findOne({ user_id: user_id, productid: productExists._id });
+
+    if (cartItem) {
+      // If item exists, update the quantity
+      cartItem.qty += qty;
+      await cartItem.save();
+    } else {
+      // If item doesn't exist, create a new cart item
+      // product_name is available in productExists.productName
+      const newCartItem = new Cart({
+        product_name: productExists.productName,
+        productid: productExists._id, // Use productExists._id (ObjectId)
+        user_id: user_id,
+        qty: qty,
+      });
+      await newCartItem.save();
+      cartItem = newCartItem; // For response consistency
+    }
+
+    res.status(201).json({ message: 'Item added to cart successfully', cartItem: cartItem });
+
+  } catch (error) {
+    console.error('Error adding item to cart:', error);
+    res.status(500).json({ message: 'Failed to add item to cart', error: error.message });
+  }
+});
 
 
+// DELETE endpoint to remove an item from user cart by cartItemId
+app.delete('/cart/:cartItemId', async (req, res) => {
+  try {
+    const cartItemId = req.params.cartItemId;
 
+    if (!mongoose.Types.ObjectId.isValid(cartItemId)) {
+      return res.status(400).json({ message: 'Invalid cartItemId' });
+    }
+
+    const deletedCartItem = await Cart.findByIdAndDelete(cartItemId);
+
+    if (!deletedCartItem) {
+      return res.status(404).json({ message: 'Cart item not found' });
+    }
+
+    res.status(200).json({ message: 'Item removed from cart successfully', deletedCartItem: deletedCartItem });
+
+  } catch (error) {
+    console.error('Error removing item from cart:', error);
+    res.status(500).json({ message: 'Failed to remove item from cart', error: error.message });
+  }
+});
+
+
+// PUT endpoint to update quantity of an item in the user cart (increment/decrement)
+app.put('/cart/:cartItemId', async (req, res) => {
+  try {
+    const cartItemId = req.params.cartItemId;
+    const action = req.query.action; // Get action from query parameter (e.g., ?action=increment or ?action=decrement)
+
+    if (!mongoose.Types.ObjectId.isValid(cartItemId)) {
+      return res.status(400).json({ message: 'Invalid cartItemId' });
+    }
+
+    if (!action || (action !== 'increment' && action !== 'decrement')) {
+      return res.status(400).json({ message: 'Invalid action. Action must be "increment" or "decrement".' });
+    }
+
+    const cartItem = await Cart.findById(cartItemId);
+
+    if (!cartItem) {
+      return res.status(404).json({ message: 'Cart item not found' });
+    }
+
+    if (action === 'increment') {
+      cartItem.qty += 1;
+    } else if (action === 'decrement') {
+      cartItem.qty -= 1;
+    }
+
+    if (cartItem.qty <= 0 && action === 'decrement') { // Only delete if decrementing leads to zero or less
+      await Cart.findByIdAndDelete(cartItemId);
+      return res.status(200).json({ message: "Item can't be removed", cartItemId: cartItemId });
+    } else {
+      const updated = await Cart.findByIdAndUpdate(cartItemId, cartItem, { new: true });
+      return res.status(200).json({ message: `Cart item quantity ${action}ed successfully`, cartItem: updated });
+    }
+
+  } catch (error) {
+    console.error('Error updating cart item quantity:', error);
+    res.status(500).json({ message: 'Failed to update cart item quantity', error: error.message });
+  }
+});
 
 
 app.listen(port, () => {
