@@ -75,9 +75,9 @@ app.post("/login", async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ error: "Invalid credentials" });
 
-    const token = jwt.sign({ userId: user._id, email: user.email }, secretKey, { expiresIn: "1h" });
-    res.json({ token });
-    // res.json({ message: "Login successful", user });
+    // const token = jwt.sign({ userId: user._id, email: user.email }, secretKey, { expiresIn: "1h" });
+    // res.json({ token });
+    res.json({ message: "Login successful", user });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -212,35 +212,28 @@ app.delete("/blogs/:id", async (req, res) => {
   }
 });
 
-
 // Create a product
 app.post("/products", upload.single("image"), async (req, res) => {
   try {
-    // Log the request body and file
     console.log("Request Body:", req.body);
     console.log("Uploaded File:", req.file);
 
-    // Extract fields from the request body
-    const { userId, productName, productId, productType, price, quantity } = req.body;
+    const { userId, productName, productType, price, quantity } = req.body;
 
-    // Create a new product
     const newProduct = new Product({
       userId,
       productName,
-      productId,
       productType,
-      price: parseFloat(price), // Ensure price is a number
-      quantity: parseInt(quantity), // Ensure quantity is a number
-      image: req.file ? req.file.buffer : null, // Store image as binary data
+      price: parseFloat(price),
+      quantity: parseInt(quantity),
+      image: req.file ? req.file.buffer : null,
     });
 
-    // Save the product to the database
     await newProduct.save();
 
-    // Send the response
     res.status(201).json({ message: "Product created successfully", product: newProduct });
   } catch (err) {
-    console.error("Error:", err); // Log the error
+    console.error("Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -255,115 +248,94 @@ app.get("/products", async (req, res) => {
   }
 });
 
-
-//get product by id
+// Get product by ID (MongoDB's _id)
 app.get("/products/:productId", async (req, res) => {
   try {
-    const { productId } = req.params; // Extract productId from the URL
+    const { productId } = req.params;
 
-    // Find the product by productId
-    const product = await Product.findOne({ productId });
+    const product = await Product.findById(productId);
 
-    // If the product is not found, return a 404 error
     if (!product) {
       return res.status(404).json({ error: "Product not found" });
     }
 
-    // Return the product
     res.json(product);
   } catch (err) {
-    console.error("Error:", err); // Log the error
+    console.error("Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
-
-
 
 // Endpoint to retrieve products by productName
 app.get("/products", async (req, res) => {
   try {
-    const { productName } = req.query; // Extract productName from the query parameters
+    const { productName } = req.query;
 
-    // Validate productName
     if (!productName) {
       return res.status(400).json({ error: "productName is required" });
     }
 
-    // Find all products with the specified productName (case-insensitive search)
     const products = await Product.find({ productName: { $regex: productName, $options: "i" } });
 
-    // If no products are found, return a 404 error
     if (products.length === 0) {
       return res.status(404).json({ error: "No products found for the specified productName" });
     }
 
-    // Return the products
     res.json(products);
   } catch (err) {
-    console.error("Error:", err); // Log the error
+    console.error("Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-
-// Endpoint to update a product by productId
+// Endpoint to update a product by ID (MongoDB's _id)
 app.put("/products/:productId", async (req, res) => {
   try {
-    const { productId } = req.params; // Extract productId from the URL
-    const updateData = req.body; // Extract update data from the request body
+    const { productId } = req.params;
+    const updateData = req.body;
 
-    // Validate productId
     if (!productId) {
       return res.status(400).json({ error: "productId is required" });
     }
 
-    // Find the product by productId and update it
-    const updatedProduct = await Product.findOneAndUpdate(
-      { productId }, // Query to find the product by productId
-      updateData, // Update the product with the provided data
-      { new: true } // Return the updated document
+    const updatedProduct = await Product.findByIdAndUpdate(
+      productId,
+      updateData,
+      { new: true }
     );
 
-    // If the product is not found, return a 404 error
     if (!updatedProduct) {
       return res.status(404).json({ error: "Product not found" });
     }
 
-    // Return the updated product
     res.json(updatedProduct);
   } catch (err) {
-    console.error("Error:", err); // Log the error
+    console.error("Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Delete a product
-// Endpoint to delete a product by productId
+// Delete a product by ID (MongoDB's _id)
 app.delete("/products/:productId", async (req, res) => {
   try {
-    const { productId } = req.params; // Extract productId from the URL
+    const { productId } = req.params;
 
-    // Validate productId
     if (!productId) {
       return res.status(400).json({ error: "productId is required" });
     }
 
-    // Find and delete the product by productId
-    const deletedProduct = await Product.findOneAndDelete({ productId });
+    const deletedProduct = await Product.findByIdAndDelete(productId);
 
-    // If the product is not found, return a 404 error
     if (!deletedProduct) {
       return res.status(404).json({ error: "Product not found" });
     }
 
-    // Return a success message
     res.json({ message: "Product deleted successfully", product: deletedProduct });
   } catch (err) {
-    console.error("Error:", err); // Log the error
+    console.error("Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
-
 
 // Endpoint to create a shop
 app.post("/shops", upload.single("image"), async (req, res) => {
@@ -726,6 +698,93 @@ app.put('/cart/:cartItemId', async (req, res) => {
     res.status(500).json({ message: 'Failed to update cart item quantity', error: error.message });
   }
 });
+
+// ---user CRUD-----
+app.post("/users", upload.single("pic"), async (req, res) => {
+  try {
+    const { username, mail, password, phonenumber, location, type } = req.body;
+    const pic = req.file ? req.file.buffer : undefined;
+
+    const newUser = new User({ username, mail, password, phonenumber, location, pic, type });
+    await newUser.save();
+    res.status(201).json(newUser);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Get All Users
+app.get("/users", async (req, res) => {
+  try {
+    const users = await User.find();
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get User by ID
+app.get("/users/:id", async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update User
+app.put("/users/:id", upload.single("pic"), async (req, res) => {
+  try {
+    const { username, mail, password, phonenumber, location, type } = req.body;
+    const pic = req.file ? req.file.buffer : undefined;
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.params.id,
+      { username, mail, password, phonenumber, location, pic, type },
+      { new: true }
+    );
+    if (!updatedUser) return res.status(404).json({ error: "User not found" });
+    res.json(updatedUser);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Delete User
+app.delete("/users/:id", async (req, res) => {
+  try {
+    const deletedUser = await User.findByIdAndDelete(req.params.id);
+    if (!deletedUser) return res.status(404).json({ error: "User not found" });
+    res.json({ message: "User deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+//------------------MISC-----------------
+//get blogs by product Id
+app.get("/products/user/:userId", async (req, res) => {
+  try {
+    const products = await Product.find({ userId: req.params.userId });
+    res.json(products);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+//get blogs by user Id
+app.get("/blogs/user/:userId", async (req, res) => {
+  try {
+    const blogs = await Blog.find({ userId: req.params.userId });
+    res.json(blogs);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 
 
 app.listen(port, () => {

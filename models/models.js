@@ -26,7 +26,6 @@ const blogSchema = new mongoose.Schema({
 const productSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   productName: { type: String, required: true },
-  productId: { type: String, required: true },
   productType: { type: String, enum: ["fertilizer", "pesticide", "crop"] },
   price: { type: Number, required: true },
   quantity: { type: Number, required: true },
