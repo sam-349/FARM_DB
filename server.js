@@ -777,7 +777,7 @@ app.get("/products/user/:userId", async (req, res) => {
 //get blogs by user Id
 app.get("/blogs/user/:userId", async (req, res) => {
   try {
-    const blogs = await Blog.find({ userId: req.params.userId });
+    const blogs = await Blog.find({ userId: req.params.userId }).populate("userId", "username");
     res.json(blogs);
   } catch (error) {
     res.status(500).json({ error: error.message });
